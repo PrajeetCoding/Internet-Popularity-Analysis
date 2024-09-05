@@ -1,0 +1,216 @@
+---
+title: "STAT 432 Final Project"
+author: "Prajeet Basu"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Libraries:
+
+```{r}
+library(ggplot2)
+library(reshape2)
+library(GGally)
+library(leaps)
+library(boot)
+library(kableExtra)
+library(caret)
+library(boot)
+library(rpart)
+library(randomForest)
+library(e1071)
+```
+
+Importing the data
+
+```{r}
+f = "C:/Users/praje/OneDrive/Documents/STAT 432/Final Project/OnlineNewsPopularity.csv"
+popularity_data = read.csv(f)
+
+```
+
+```{r}
+popularity_data = subset(
+  popularity_data, select=-c(url)
+                             )
+                         
+dimension = dim(popularity_data)
+
+cat("The dimensions of this dataset are:", dimension, "\n")
+cat("The feature variables are: ","\n")
+names(popularity_data)[! names(popularity_data) %in% c("shares")]
+cat("\n")
+cat("The response variable is: shares")
+```
+Change all these categorical variables to factors.
+
+```{r}
+is_binary = function(x) {
+  return( all(x %in% 0:1) )
+}
+
+for (i in colnames(popularity_data)) {
+  if ( is_binary(popularity_data[[i]]) == TRUE) {
+    popularity_data[[i]] = as.factor(popularity_data[[i]])
+    cat(i, "\n")
+  }
+
+}
+
+```
+No null/missing values
+```{r}
+sum(is.na(popularity_data))
+```
+
+Had to reduce the dataset because it was too big to analyze (this could be one of the limitations of our analysis).  We then split into training and test data.
+```{r}
+set.seed(2)
+
+reduced_data = popularity_data[seq(1, nrow(popularity_data), 50), ] 
+
+rsample = sample(1:nrow(reduced_data), 650)
+train.data = reduced_data[rsample, ]
+test.data = reduced_data[-rsample, ]
+
+
+summary(popularity_data$shares)
+cat("sd", sd(popularity_data$shares))
+
+```
+```{r}
+dim(reduced_data)
+summary(reduced_data$shares)
+sd(reduced_data$shares)
+```
+
+```{r}
+
+
+hist(popularity_data$shares, freq=FALSE,xlab="Shares", main="Distribution of Shares")
+lines(density(popularity_data$shares))
+```
+
+If we want to normalize response:
+```{r}
+# Log transformation
+hist(log(popularity_data$shares), freq=FALSE,xlab="Shares", main="Distribution of Shares")
+lines(density(log(popularity_data$shares)))
+
+```
+```{r}
+# log base 10
+hist(log(popularity_data$shares, 10), freq=FALSE,xlab="Shares", main="Distribution of Shares")
+lines(density(log(popularity_data$shares, 10)))
+```
+```{r}
+hist(1 / popularity_data$shares, freq=FALSE,xlab="Shares", main="Distribution of Shares")
+lines(density(1 / popularity_data$shares))
+```
+
+```{r}
+qqnorm(log(popularity_data$shares,10))
+qqline(log(popularity_data$shares, 10))
+```
+```{r}
+log10shares = log(popularity_data$shares, 10)
+```
+
+```{r}
+plot(popularity_data$kw_avg_avg, log(popularity_data$shares, 10))
+```
+
+```{r}
+plot(popularity_data$num_videos, log(popularity_data$shares,10))
+```
+
+```{r}
+plot(data_sample$self_reference_max_shares, log(data_sample$shares,10))
+```
+```{r}
+dim(train.data)
+```
+
+```{r}
+# Ten fold CV with glm
+
+set.seed(2)
+control=trainControl(method = "cv",number=10)
+
+basic.lm<-train(shares ~.,data=train.data,
+                 method = 'lm', 
+                 trControl=control
+               ) 
+
+basic.lm$results
+```
+```{r}
+basic.lm$results$RMSE
+```
+```{r}
+basic.resid = resid(basic.lm)
+qqnorm(basic.resid)
+qqline(basic.resid)
+```
+
+```{r}
+set.seed(2)
+control=trainControl(method = "cv",number=10)
+
+reduced.lm<-train(shares ~ kw_avg_avg + self_reference_max_shares + num_videos,data=train.data,
+                 method = 'lm', 
+                 trControl=control
+               ) 
+```
+
+```{r}
+reduced.lm$results$RMSE
+
+```
+
+```{r}
+#10-fold CV knn
+set.seed(2)
+control=trainControl(method = "cv",number=10)
+knn1 = train(shares ~ ., method = "knn", 
+                   data = train.data,
+                   tuneGrid = data.frame(k = seq(1, 101, 2)),
+                   trControl = control)
+
+knn1$results
+```
+
+```{r}
+#Ten fold random forest
+knn1$bestTune
+knn1.RMSE = min(knn1$results$RMSE)
+knn1.RMSE
+```
+
+```{r}
+set.seed(2)
+
+control=trainControl(method = "cv",number=10)
+
+set.seed(1)
+rf <- train(shares ~ ., method = "rf", 
+                   data =train.data,
+                   tuneGrid = data.frame(mtry=seq(1,12,1)),
+                   trControl = control)
+
+rf$results
+```
+
+```{r}
+rf$bestTune
+rf.RMSE = min(rf$results$RMSE)
+rf.RMSE
+```
+
+
+Can try boosting/bagging, ridge/lasso as well.  Also need to make some graphs.  
+
